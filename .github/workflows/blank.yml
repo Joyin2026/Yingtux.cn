@@ -34,7 +34,7 @@ jobs:
         run: |
           npm install -g cordova
           # 创建一个临时的 Cordova 项目
-          cordova create webapp com.yingtux.app 影途社
+          cordova create webapp com.yingtux.app 影图空间
           cd webapp
           
           # 配置项目，使其加载你的网站，而不是本地文件
