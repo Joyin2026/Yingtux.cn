@@ -91,7 +91,7 @@ jobs:
           cd webapp
           cp config.xml config.xml.bak
 
-          # 插入图标配置
+          # 插入图标配置（每个 sed 命令独立一行，避免续行符）
           sed -i '/<platform name="android">/a \        <icon density="mdpi" src="res/icon/android/icon-mdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <icon density="hdpi" src="res/icon/android/icon-hdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <icon density="xhdpi" src="res/icon/android/icon-xhdpi.png" />' config.xml
