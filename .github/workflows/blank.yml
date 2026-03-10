@@ -38,11 +38,8 @@ jobs:
           npm install -g cordova
           cordova create webapp com.yingtux.app 影图空间
           cd webapp
-
-          # 修改启动页为本地广告页（稍后创建）
+          # 修改启动页为本地广告页
           sed -i 's|<content src="index.html" />|<content src="ad.html" />|' config.xml
-
-          # 添加 Android 平台和插件
           cordova platform add android
           cordova plugin add cordova-plugin-splashscreen
 
@@ -55,16 +52,12 @@ jobs:
           mkdir -p res/icon/android
           mkdir -p res/screen/android
 
-          # 源图标（位于仓库根目录）
+          # ---------- 生成图标（使用 logo.png）----------
           ICON_SRC="../logo.png"
-
           if [ ! -f "$ICON_SRC" ]; then
             echo "错误：未找到根目录下的 logo.png 文件！"
             exit 1
           fi
-
-          # ---------- 生成图标 ----------
-          # 密度: mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi
           for size in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             case $size in
               mdpi)    res=48 ;;
@@ -73,13 +66,15 @@ jobs:
               xxhdpi)  res=144 ;;
               xxxhdpi) res=192 ;;
             esac
-            # 生成图标文件到 res/icon/android/
             convert $ICON_SRC -resize ${res}x${res} res/icon/android/icon-$size.png
           done
 
-          # ---------- 生成启动画面（竖屏）----------
-          # 标准启动画面尺寸（宽度x高度）
-          # mdpi: 320x480, hdpi: 480x800, xhdpi: 720x1280, xxhdpi: 960x1600, xxxhdpi: 1280x1920
+          # ---------- 生成启动画面（使用 splash.png）----------
+          SPLASH_SRC="../splash.png"
+          if [ ! -f "$SPLASH_SRC" ]; then
+            echo "错误：未找到根目录下的 splash.png 文件！"
+            exit 1
+          fi
           for size in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             case $size in
               mdpi)    width=320; height=480 ;;
@@ -88,8 +83,8 @@ jobs:
               xxhdpi)  width=960; height=1600 ;;
               xxxhdpi) width=1280; height=1920 ;;
             esac
-            # 将 logo 缩放并扩展至目标尺寸（居中，背景白色）
-            convert $ICON_SRC -resize ${width}x${height}^ -gravity center -background white -extent ${width}x${height} res/screen/android/splash-$size.png
+            # 将 splash.png 缩放并扩展至目标尺寸（居中，背景白色）
+            convert $SPLASH_SRC -resize ${width}x${height}^ -gravity center -background white -extent ${width}x${height} res/screen/android/splash-$size.png
           done
 
           echo "图标和启动画面生成完成"
@@ -97,19 +92,15 @@ jobs:
       - name: Configure icons and splash in config.xml
         run: |
           cd webapp
-          # 在 <platform name="android"> 内添加图标和启动画面配置
-          # 使用 sed 在 platform 标签内插入
-          # 先备份 config.xml
+          # 备份原文件
           cp config.xml config.xml.bak
-          
-          # 插入图标配置（注意缩进）
+          # 在 <platform name="android"> 后插入图标配置
           sed -i '/<platform name="android">/a \
         <icon density="mdpi" src="res/icon/android/icon-mdpi.png" />\
         <icon density="hdpi" src="res/icon/android/icon-hdpi.png" />\
         <icon density="xhdpi" src="res/icon/android/icon-xhdpi.png" />\
         <icon density="xxhdpi" src="res/icon/android/icon-xxhdpi.png" />\
         <icon density="xxxhdpi" src="res/icon/android/icon-xxxhdpi.png" />' config.xml
-          
           # 插入启动画面配置
           sed -i '/<platform name="android">/a \
         <splash density="mdpi" src="res/screen/android/splash-mdpi.png" />\
@@ -117,14 +108,12 @@ jobs:
         <splash density="xhdpi" src="res/screen/android/splash-xhdpi.png" />\
         <splash density="xxhdpi" src="res/screen/android/splash-xxhdpi.png" />\
         <splash density="xxxhdpi" src="res/screen/android/splash-xxxhdpi.png" />' config.xml
-
           echo "config.xml 已更新"
 
       - name: Create ad.html (splash ad page)
         run: |
           cd webapp/www
-          
-          # 创建广告页，5秒后跳转至目标网址
+          # 创建广告页，5秒后跳转
           cat > ad.html << 'EOF'
 <!DOCTYPE html>
 <html>
@@ -142,7 +131,6 @@ jobs:
 </head>
 <body>
     <div class="container">
-        <!-- 广告图片：如果存在 ad.png 则显示，否则显示文字 -->
         <img id="adImage" class="ad-image" style="display:none;" />
         <div id="adText" style="font-size:24px; font-weight:bold; color:#333;">🎉 精彩广告位 🎉</div>
         <p style="color:#888;">5秒后自动进入网站</p>
@@ -150,7 +138,6 @@ jobs:
         <button class="skip-btn" onclick="skipAd()">立即跳过</button>
     </div>
     <script>
-        // 检查本地是否有广告图片
         var img = new Image();
         img.onload = function() {
             document.getElementById('adImage').src = 'img/ad.png';
@@ -183,7 +170,7 @@ jobs:
 </html>
 EOF
 
-          # 创建 img 目录，如果有广告图则复制
+          # 创建 img 目录并复制广告图片（如果有）
           mkdir -p img
           if [ -f "../../ad.png" ]; then
             cp ../../ad.png img/ad.png
@@ -205,7 +192,6 @@ EOF
           echo "构建类型：$BUILD_TYPE"
           cordova build android --$BUILD_TYPE --verbose
 
-          # 设置 APK 路径
           if [ "$BUILD_TYPE" = "debug" ]; then
             APK_PATH="webapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
           else
