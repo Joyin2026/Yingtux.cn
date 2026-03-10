@@ -47,14 +47,14 @@ jobs:
       # 5. 可选：自定义应用图标和名称 (需要你将图标文件放在仓库的指定路径)
       # 如果你希望 App 有自定义图标，可以在仓库中创建 icons/logo.png (至少192x192)
       # 并取消下面几行的注释
-      # - name: Customize App Icon and Name
-      #   run: |
-      #     cd webapp
+      - name: Customize App Icon and Name
+        run: |
+          cd webapp
       #     # 复制图标到 Cordova 的默认位置 (需要根据你的图标调整)
-      #     mkdir -p platforms/android/app/src/main/res/mipmap-xxxhdpi/
-      #     cp ../icons/logo.png platforms/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-      #     # 更多尺寸图标的复制操作...
-      #     echo "自定义图标步骤（简化版），实际使用需要更详细的配置"
+          mkdir -p platforms/android/app/src/main/res/mipmap-xxxhdpi/
+          cp ../icons/logo.png platforms/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          # 更多尺寸图标的复制操作...
+          echo "自定义图标步骤（简化版），实际使用需要更详细的配置"
 
       # 6. 构建未签名的调试版 APK
       - name: Build APK
