@@ -1,71 +1,110 @@
 name: Package Website into Android APK
 
-# 触发条件：当你推送到 main 分支时自动构建
 on:
+  # 推送到 main 分支时自动构建（默认 debug 版）
   push:
     branches: [ "main" ]
-  # 你也可以手动触发工作流
+  # 手动触发时允许选择构建类型
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型 (debug / release)'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 检出你的仓库代码（虽然这次我们主要用配置，但步骤需要）
+      # 1. 检出仓库代码（主要为了获取 logo.png）
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Java 环境 (Android 构建必需)
+      # 2. 设置 Java 环境
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. 设置 Node.js 环境 (Cordova 必需)
+      # 3. 设置 Node.js 环境
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 4. 安装 Cordova 并创建应用壳
+      # 4. 安装 Cordova 并创建应用壳，配置加载你的网站
       - name: Create Cordova project
         run: |
           npm install -g cordova
-          # 创建一个临时的 Cordova 项目
           cordova create webapp com.yingtux.app 影图空间
           cd webapp
-          
-          # 配置项目，使其加载你的网站，而不是本地文件
-          # 这一步是关键：修改 config.xml，设置内容来源为你提供的网址
+          # 修改启动页为你的网址
           sed -i 's|<content src="index.html" />|<content src="https://www.yingtux.cn" />|' config.xml
-          
-          # 添加 Android 平台
           cordova platform add android
 
-      # 5. 可选：自定义应用图标和名称 (需要你将图标文件放在仓库的指定路径)
-      # 如果你希望 App 有自定义图标，可以在仓库中创建 icons/logo.png (至少192x192)
-      # 并取消下面几行的注释
-      - name: Customize App Icon and Name
+      # 5. 生成并复制多分辨率图标（基于根目录下的 logo.png）
+      - name: Generate and copy icons for all densities
         run: |
           cd webapp
-      #     # 复制图标到 Cordova 的默认位置 (需要根据你的图标调整)
-          mkdir -p platforms/android/app/src/main/res/mipmap-xxxhdpi/
-          cp ../icons/logo.png platforms/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          # 更多尺寸图标的复制操作...
-          echo "自定义图标步骤（简化版），实际使用需要更详细的配置"
+          # 安装 ImageMagick（用于图片缩放）
+          sudo apt-get update && sudo apt-get install -y imagemagick
 
-      # 6. 构建未签名的调试版 APK
+          # 源图标路径（相对于 webapp 目录，位于仓库根目录）
+          ICON_SRC="../logo.png"
+
+          # 检查图标文件是否存在
+          if [ ! -f "$ICON_SRC" ]; then
+            echo "错误：未找到根目录下的 logo.png 文件！"
+            exit 1
+          fi
+
+          # 循环生成各密度图标
+          for size in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            case $size in
+              mdpi)    res=48 ;;
+              hdpi)    res=72 ;;
+              xhdpi)   res=96 ;;
+              xxhdpi)  res=144 ;;
+              xxxhdpi) res=192 ;;
+            esac
+            mkdir -p platforms/android/app/src/main/res/mipmap-$size/
+            convert $ICON_SRC -resize ${res}x${res} platforms/android/app/src/main/res/mipmap-$size/ic_launcher.png
+          done
+          echo "所有密度图标已生成"
+
+      # 6. 根据输入类型构建 APK（push 触发时默认 debug）
       - name: Build APK
+        id: build
         run: |
           cd webapp
-          cordova build android --verbose
+          # 确定构建类型：如果手动触发有输入则使用输入值，否则默认为 debug
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          if [ -z "$BUILD_TYPE" ]; then
+            BUILD_TYPE="debug"
+          fi
+          echo "构建类型：$BUILD_TYPE"
+          
+          # 执行构建（release 构建需要签名，此处仅作演示；若需真正 release 请配置签名）
+          cordova build android --$BUILD_TYPE --verbose
+          
+          # 设置输出路径供后续步骤使用
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            APK_PATH="webapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
+          else
+            # 注意：未签名的 release apk 名称为 app-release-unsigned.apk，且构建可能因无签名而失败
+            APK_PATH="webapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-      # 7. 上传生成的 APK 文件作为工作流产物
+      # 7. 上传生成的 APK 文件
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: yingtu-website-app
-          # Cordova 生成 APK 的默认路径
-          path: webapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          name: yingtu-website-app-${{ github.event.inputs.build_type || 'debug' }}
+          path: ${{ steps.build.outputs.apk_path }}
