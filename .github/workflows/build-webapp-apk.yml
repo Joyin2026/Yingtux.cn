@@ -38,7 +38,6 @@ jobs:
           npm install -g cordova
           cordova create webapp com.yingtux.app 影图空间
           cd webapp
-          # 修改启动页为本地广告页
           sed -i 's|<content src="index.html" />|<content src="ad.html" />|' config.xml
           cordova platform add android
           cordova plugin add cordova-plugin-splashscreen
@@ -48,11 +47,10 @@ jobs:
           cd webapp
           sudo apt-get update && sudo apt-get install -y imagemagick
 
-          # 创建资源目录
           mkdir -p res/icon/android
           mkdir -p res/screen/android
 
-          # ---------- 生成图标（使用 logo.png）----------
+          # 生成图标（使用 logo.png）
           ICON_SRC="../logo.png"
           if [ ! -f "$ICON_SRC" ]; then
             echo "错误：未找到根目录下的 logo.png 文件！"
@@ -69,7 +67,7 @@ jobs:
             convert $ICON_SRC -resize ${res}x${res} res/icon/android/icon-$size.png
           done
 
-          # ---------- 生成启动画面（使用 splash.png）----------
+          # 生成启动画面（使用 splash.png）
           SPLASH_SRC="../splash.png"
           if [ ! -f "$SPLASH_SRC" ]; then
             echo "错误：未找到根目录下的 splash.png 文件！"
@@ -91,17 +89,16 @@ jobs:
       - name: Configure icons and splash in config.xml
         run: |
           cd webapp
-          # 备份原文件
           cp config.xml config.xml.bak
 
-          # 逐个插入图标配置（避免复杂的 sed 续行）
+          # 插入图标配置
           sed -i '/<platform name="android">/a \        <icon density="mdpi" src="res/icon/android/icon-mdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <icon density="hdpi" src="res/icon/android/icon-hdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <icon density="xhdpi" src="res/icon/android/icon-xhdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <icon density="xxhdpi" src="res/icon/android/icon-xxhdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <icon density="xxxhdpi" src="res/icon/android/icon-xxxhdpi.png" />' config.xml
 
-          # 逐个插入启动画面配置
+          # 插入启动画面配置
           sed -i '/<platform name="android">/a \        <splash density="mdpi" src="res/screen/android/splash-mdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <splash density="hdpi" src="res/screen/android/splash-hdpi.png" />' config.xml
           sed -i '/<platform name="android">/a \        <splash density="xhdpi" src="res/screen/android/splash-xhdpi.png" />' config.xml
@@ -113,7 +110,6 @@ jobs:
       - name: Create ad.html (splash ad page)
         run: |
           cd webapp/www
-          # 创建广告页，5秒后跳转
           cat > ad.html << 'EOF'
 <!DOCTYPE html>
 <html>
@@ -144,9 +140,7 @@ jobs:
             document.getElementById('adImage').style.display = 'block';
             document.getElementById('adText').style.display = 'none';
         };
-        img.onerror = function() {
-            // 图片不存在，保持文字显示
-        };
+        img.onerror = function() { };
         img.src = 'img/ad.png';
 
         var seconds = 5;
@@ -170,7 +164,6 @@ jobs:
 </html>
 EOF
 
-          # 创建 img 目录并复制广告图片（如果有）
           mkdir -p img
           if [ -f "../../ad.png" ]; then
             cp ../../ad.png img/ad.png
@@ -178,7 +171,6 @@ EOF
           else
             echo "未找到 ad.png，广告页将显示文字"
           fi
-
           cd ../..
 
       - name: Build APK
@@ -189,7 +181,7 @@ EOF
           if [ -z "$BUILD_TYPE" ]; then
             BUILD_TYPE="debug"
           fi
-          echo "构建类型：$BUILD_TYPE"
+          echo "构建类型: $BUILD_TYPE"
           cordova build android --$BUILD_TYPE --verbose
 
           if [ "$BUILD_TYPE" = "debug" ]; then
