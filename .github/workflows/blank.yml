@@ -1,10 +1,8 @@
 name: Package Website into Android APK
 
 on:
-  # 推送到 main 分支时自动构建（默认 debug 版）
   push:
     branches: [ "main" ]
-  # 手动触发时允许选择构建类型
   workflow_dispatch:
     inputs:
       build_type:
@@ -21,50 +19,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 检出仓库代码（主要为了获取 logo.png）
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Java 环境
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. 设置 Node.js 环境
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 4. 安装 Cordova 并创建应用壳，配置加载你的网站
-      - name: Create Cordova project
+      - name: Install Cordova and create project
         run: |
           npm install -g cordova
           cordova create webapp com.yingtux.app 影图空间
           cd webapp
-          # 修改启动页为你的网址
-          sed -i 's|<content src="index.html" />|<content src="https://www.yingtux.cn" />|' config.xml
-          cordova platform add android
 
-      # 5. 生成并复制多分辨率图标（基于根目录下的 logo.png）
-      - name: Generate and copy icons for all densities
+          # 修改启动页为本地广告页（稍后创建）
+          sed -i 's|<content src="index.html" />|<content src="ad.html" />|' config.xml
+
+          # 添加 Android 平台和插件
+          cordova platform add android
+          cordova plugin add cordova-plugin-splashscreen
+
+      - name: Generate icons and splash screens
         run: |
           cd webapp
-          # 安装 ImageMagick（用于图片缩放）
           sudo apt-get update && sudo apt-get install -y imagemagick
 
-          # 源图标路径（相对于 webapp 目录，位于仓库根目录）
+          # 创建资源目录
+          mkdir -p res/icon/android
+          mkdir -p res/screen/android
+
+          # 源图标（位于仓库根目录）
           ICON_SRC="../logo.png"
 
-          # 检查图标文件是否存在
           if [ ! -f "$ICON_SRC" ]; then
             echo "错误：未找到根目录下的 logo.png 文件！"
             exit 1
           fi
 
-          # 循环生成各密度图标
+          # ---------- 生成图标 ----------
+          # 密度: mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi
           for size in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             case $size in
               mdpi)    res=48 ;;
@@ -73,36 +73,146 @@ jobs:
               xxhdpi)  res=144 ;;
               xxxhdpi) res=192 ;;
             esac
-            mkdir -p platforms/android/app/src/main/res/mipmap-$size/
-            convert $ICON_SRC -resize ${res}x${res} platforms/android/app/src/main/res/mipmap-$size/ic_launcher.png
+            # 生成图标文件到 res/icon/android/
+            convert $ICON_SRC -resize ${res}x${res} res/icon/android/icon-$size.png
           done
-          echo "所有密度图标已生成"
 
-      # 6. 根据输入类型构建 APK（push 触发时默认 debug）
+          # ---------- 生成启动画面（竖屏）----------
+          # 标准启动画面尺寸（宽度x高度）
+          # mdpi: 320x480, hdpi: 480x800, xhdpi: 720x1280, xxhdpi: 960x1600, xxxhdpi: 1280x1920
+          for size in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            case $size in
+              mdpi)    width=320; height=480 ;;
+              hdpi)    width=480; height=800 ;;
+              xhdpi)   width=720; height=1280 ;;
+              xxhdpi)  width=960; height=1600 ;;
+              xxxhdpi) width=1280; height=1920 ;;
+            esac
+            # 将 logo 缩放并扩展至目标尺寸（居中，背景白色）
+            convert $ICON_SRC -resize ${width}x${height}^ -gravity center -background white -extent ${width}x${height} res/screen/android/splash-$size.png
+          done
+
+          echo "图标和启动画面生成完成"
+
+      - name: Configure icons and splash in config.xml
+        run: |
+          cd webapp
+          # 在 <platform name="android"> 内添加图标和启动画面配置
+          # 使用 sed 在 platform 标签内插入
+          # 先备份 config.xml
+          cp config.xml config.xml.bak
+          
+          # 插入图标配置（注意缩进）
+          sed -i '/<platform name="android">/a \
+        <icon density="mdpi" src="res/icon/android/icon-mdpi.png" />\
+        <icon density="hdpi" src="res/icon/android/icon-hdpi.png" />\
+        <icon density="xhdpi" src="res/icon/android/icon-xhdpi.png" />\
+        <icon density="xxhdpi" src="res/icon/android/icon-xxhdpi.png" />\
+        <icon density="xxxhdpi" src="res/icon/android/icon-xxxhdpi.png" />' config.xml
+          
+          # 插入启动画面配置
+          sed -i '/<platform name="android">/a \
+        <splash density="mdpi" src="res/screen/android/splash-mdpi.png" />\
+        <splash density="hdpi" src="res/screen/android/splash-hdpi.png" />\
+        <splash density="xhdpi" src="res/screen/android/splash-xhdpi.png" />\
+        <splash density="xxhdpi" src="res/screen/android/splash-xxhdpi.png" />\
+        <splash density="xxxhdpi" src="res/screen/android/splash-xxxhdpi.png" />' config.xml
+
+          echo "config.xml 已更新"
+
+      - name: Create ad.html (splash ad page)
+        run: |
+          cd webapp/www
+          
+          # 创建广告页，5秒后跳转至目标网址
+          cat > ad.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>开屏广告</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #ffffff; font-family: sans-serif; }
+        .container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; }
+        .ad-image { max-width: 90%; max-height: 70vh; margin-bottom: 20px; }
+        .countdown { font-size: 18px; color: #666; margin-top: 20px; }
+        .skip-btn { margin-top: 30px; padding: 10px 30px; background-color: #007aff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 广告图片：如果存在 ad.png 则显示，否则显示文字 -->
+        <img id="adImage" class="ad-image" style="display:none;" />
+        <div id="adText" style="font-size:24px; font-weight:bold; color:#333;">🎉 精彩广告位 🎉</div>
+        <p style="color:#888;">5秒后自动进入网站</p>
+        <div class="countdown" id="countdown">5 秒后跳转</div>
+        <button class="skip-btn" onclick="skipAd()">立即跳过</button>
+    </div>
+    <script>
+        // 检查本地是否有广告图片
+        var img = new Image();
+        img.onload = function() {
+            document.getElementById('adImage').src = 'img/ad.png';
+            document.getElementById('adImage').style.display = 'block';
+            document.getElementById('adText').style.display = 'none';
+        };
+        img.onerror = function() {
+            // 图片不存在，保持文字显示
+        };
+        img.src = 'img/ad.png';
+
+        var seconds = 5;
+        var countdownEl = document.getElementById('countdown');
+        var timer = setInterval(function() {
+            seconds--;
+            if (seconds <= 0) {
+                clearInterval(timer);
+                window.location.href = 'https://www.yingtux.cn';
+            } else {
+                countdownEl.innerText = seconds + ' 秒后跳转';
+            }
+        }, 1000);
+
+        function skipAd() {
+            clearInterval(timer);
+            window.location.href = 'https://www.yingtux.cn';
+        }
+    </script>
+</body>
+</html>
+EOF
+
+          # 创建 img 目录，如果有广告图则复制
+          mkdir -p img
+          if [ -f "../../ad.png" ]; then
+            cp ../../ad.png img/ad.png
+            echo "广告图片已复制"
+          else
+            echo "未找到 ad.png，广告页将显示文字"
+          fi
+
+          cd ../..
+
       - name: Build APK
         id: build
         run: |
           cd webapp
-          # 确定构建类型：如果手动触发有输入则使用输入值，否则默认为 debug
           BUILD_TYPE="${{ github.event.inputs.build_type }}"
           if [ -z "$BUILD_TYPE" ]; then
             BUILD_TYPE="debug"
           fi
           echo "构建类型：$BUILD_TYPE"
-          
-          # 执行构建（release 构建需要签名，此处仅作演示；若需真正 release 请配置签名）
           cordova build android --$BUILD_TYPE --verbose
-          
-          # 设置输出路径供后续步骤使用
+
+          # 设置 APK 路径
           if [ "$BUILD_TYPE" = "debug" ]; then
             APK_PATH="webapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
           else
-            # 注意：未签名的 release apk 名称为 app-release-unsigned.apk，且构建可能因无签名而失败
             APK_PATH="webapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk"
           fi
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-      # 7. 上传生成的 APK 文件
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
